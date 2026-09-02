@@ -1,27 +1,8 @@
 use windows::Win32::Foundation::RECT;
 
+use input_event::screen::{CrossedEdge, Rect, crossed_exposed_edge};
+
 use crate::Position;
-
-fn is_within_dp_region(point: (i32, i32), display: &RECT) -> bool {
-    [
-        Position::Left,
-        Position::Right,
-        Position::Top,
-        Position::Bottom,
-    ]
-    .iter()
-    .all(|&pos| is_within_dp_boundary(point, display, pos))
-}
-
-fn is_within_dp_boundary(point: (i32, i32), display: &RECT, pos: Position) -> bool {
-    let (x, y) = point;
-    match pos {
-        Position::Left => display.left <= x,
-        Position::Right => display.right > x,
-        Position::Top => display.top <= y,
-        Position::Bottom => display.bottom > y,
-    }
-}
 
 /// returns whether the given position is within the display bounds with respect to the given
 /// barrier position
@@ -97,7 +78,30 @@ pub(crate) fn entered_barrier(
     prev_pos: (i32, i32),
     curr_pos: (i32, i32),
     displays: &[RECT],
-) -> Option<Position> {
+) -> Option<(Position, (i32, i32))> {
+    // Prefer the shared geometry helper for real crossings so the entry point
+    // is interpolated along the exposed edge. Keep the explicit fallback for
+    // Windows' clamped cursor, where the previous and current points can be
+    // identical at an outer edge.
+    if let Some(CrossedEdge { edge, point }) = crossed_exposed_edge(
+        prev_pos,
+        curr_pos,
+        displays.iter().map(|display| Rect {
+            x: display.left,
+            y: display.top,
+            width: display.right.saturating_sub(display.left),
+            height: display.bottom.saturating_sub(display.top),
+        }),
+    ) {
+        let position = match edge {
+            input_event::screen::Edge::Left => Position::Left,
+            input_event::screen::Edge::Right => Position::Right,
+            input_event::screen::Edge::Top => Position::Top,
+            input_event::screen::Edge::Bottom => Position::Bottom,
+        };
+        return Some((position, point));
+    }
+
     [
         Position::Left,
         Position::Right,
@@ -105,10 +109,8 @@ pub(crate) fn entered_barrier(
         Position::Bottom,
     ]
     .into_iter()
-    .find(|&pos| {
-        moved_across_boundary(prev_pos, curr_pos, displays, pos)
-            || reached_outer_boundary(prev_pos, curr_pos, displays, pos)
-    })
+    .find(|&pos| reached_outer_boundary(prev_pos, curr_pos, displays, pos))
+    .map(|pos| (pos, curr_pos))
 }
 
 ///
@@ -167,19 +169,19 @@ mod tests {
 
         assert_eq!(
             entered_barrier((0, 40), (0, 41), &displays),
-            Some(Position::Left)
+            Some((Position::Left, (0, 40)))
         );
         assert_eq!(
             entered_barrier((99, 40), (99, 41), &displays),
-            Some(Position::Right)
+            Some((Position::Right, (99, 41)))
         );
         assert_eq!(
             entered_barrier((40, 0), (41, 0), &displays),
-            Some(Position::Top)
+            Some((Position::Top, (40, 0)))
         );
         assert_eq!(
             entered_barrier((40, 79), (41, 79), &displays),
-            Some(Position::Bottom)
+            Some((Position::Bottom, (40, 79)))
         );
     }
 
@@ -216,19 +218,19 @@ mod tests {
 
         assert_eq!(
             entered_barrier((1, 40), (0, 40), &displays),
-            Some(Position::Left)
+            Some((Position::Left, (0, 40)))
         );
         assert_eq!(
             entered_barrier((98, 40), (99, 40), &displays),
-            Some(Position::Right)
+            Some((Position::Right, (99, 40)))
         );
         assert_eq!(
             entered_barrier((40, 1), (40, 0), &displays),
-            Some(Position::Top)
+            Some((Position::Top, (40, 0)))
         );
         assert_eq!(
             entered_barrier((40, 78), (40, 79), &displays),
-            Some(Position::Bottom)
+            Some((Position::Bottom, (40, 79)))
         );
     }
 
