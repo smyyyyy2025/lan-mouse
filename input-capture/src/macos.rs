@@ -131,7 +131,7 @@ impl InputCaptureState {
         }
     }
 
-    fn crossing_position(&self, event: &CGEvent) -> Option<Position> {
+    fn crossing_position(&self, event: &CGEvent) -> Option<(Position, Option<f32>)> {
         let location = event.location();
         let relative_x = event.get_double_value_field(EventField::MOUSE_EVENT_DELTA_X);
         let relative_y = event.get_double_value_field(EventField::MOUSE_EVENT_DELTA_Y);
@@ -143,7 +143,15 @@ impl InputCaptureState {
                 || (position == Position::Bottom && (location.y + relative_y) >= self.bounds.ymax)
             {
                 log::debug!("Crossed barrier into position: {position:?}");
-                return Some(position);
+                let cross_axis = match position {
+                    Position::Left | Position::Right => {
+                        normalized_axis(location.y, self.bounds.ymin, self.bounds.ymax)
+                    }
+                    Position::Top | Position::Bottom => {
+                        normalized_axis(location.x, self.bounds.xmin, self.bounds.xmax)
+                    }
+                };
+                return Some((position, cross_axis));
             }
         }
         None
@@ -265,6 +273,14 @@ impl InputCaptureState {
         };
         Ok(())
     }
+}
+
+fn normalized_axis(value: f64, min: f64, max: f64) -> Option<f32> {
+    let span = max - min;
+    if span <= 0.0 {
+        return None;
+    }
+    Some(((value - min) / span).clamp(0.0, 1.0) as f32)
 }
 
 fn is_inward_motion(position: Position, relative_x: f64, relative_y: f64) -> bool {
@@ -616,7 +632,7 @@ fn create_event_tap<'a>(
             }
         } else if is_pointer_motion_event(event_type) {
             // Did we cross a barrier?
-            if let Some(new_pos) = state.crossing_position(cg_ev) {
+            if let Some((new_pos, cross_axis)) = state.crossing_position(cg_ev) {
                 let crossing_is_armed = if input_source == InputSource::Emulated {
                     state.emulated_armed_clients.remove(&new_pos)
                 } else {
@@ -635,13 +651,13 @@ fn create_event_tap<'a>(
                         // that its pointer crossed back. Do not grab/hide the
                         // local cursor and do not drop the synthesized event.
                         route_enter_only = true;
-                        res_events.push(CaptureEvent::Begin);
+                        res_events.push(CaptureEvent::Begin { cross_axis });
                     } else {
                         drop_event = true;
                         state
                             .start_capture(cg_ev, new_pos)
                             .unwrap_or_else(|e| log::warn!("{e}"));
-                        res_events.push(CaptureEvent::Begin);
+                        res_events.push(CaptureEvent::Begin { cross_axis });
                         state
                             .handle_producer_event(ProducerEvent::Grab(new_pos, input_source))
                             .unwrap_or_else(|e| log::warn!("failed to grab pointer: {e}"));

@@ -37,7 +37,7 @@ pub type CaptureHandle = u64;
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CaptureEvent {
     /// capture on this capture handle is now active
-    Begin,
+    Begin { cross_axis: Option<f32> },
     /// input event coming from capture handle
     Input(Event),
 }
@@ -45,7 +45,9 @@ pub enum CaptureEvent {
 impl Display for CaptureEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CaptureEvent::Begin => write!(f, "begin capture"),
+            CaptureEvent::Begin { cross_axis } => {
+                write!(f, "begin capture ({cross_axis:?})")
+            }
             CaptureEvent::Input(e) => write!(f, "{e}"),
         }
     }
@@ -355,7 +357,7 @@ fn route_handles(
     event: CaptureEvent,
     event_requires_enter_only: bool,
 ) -> Vec<CaptureHandle> {
-    if event == CaptureEvent::Begin && event_requires_enter_only {
+    if matches!(event, CaptureEvent::Begin { .. }) && event_requires_enter_only {
         handles
             .iter()
             .copied()
@@ -493,7 +495,12 @@ mod tests {
     fn emulated_begin_is_routed_only_to_enter_only_handles() {
         let enter_only = HashSet::from([2]);
         assert_eq!(
-            route_handles(&[1, 2], &enter_only, CaptureEvent::Begin, true),
+            route_handles(
+                &[1, 2],
+                &enter_only,
+                CaptureEvent::Begin { cross_axis: None },
+                true,
+            ),
             vec![2]
         );
     }
@@ -502,7 +509,12 @@ mod tests {
     fn physical_begin_is_routed_to_all_handles() {
         let enter_only = HashSet::from([2]);
         assert_eq!(
-            route_handles(&[1, 2], &enter_only, CaptureEvent::Begin, false),
+            route_handles(
+                &[1, 2],
+                &enter_only,
+                CaptureEvent::Begin { cross_axis: None },
+                false,
+            ),
             vec![1, 2]
         );
     }
@@ -511,8 +523,16 @@ mod tests {
     fn unroutable_event_does_not_stall_the_next_ready_event() {
         let backend = QueuedCapture {
             events: VecDeque::from([
-                (Position::Left, CaptureEvent::Begin, true),
-                (Position::Left, CaptureEvent::Begin, false),
+                (
+                    Position::Left,
+                    CaptureEvent::Begin { cross_axis: None },
+                    true,
+                ),
+                (
+                    Position::Left,
+                    CaptureEvent::Begin { cross_axis: None },
+                    false,
+                ),
             ]),
             last_event_requires_enter_only: false,
         };
@@ -528,7 +548,7 @@ mod tests {
         let mut context = Context::from_waker(noop_waker_ref());
 
         match Pin::new(&mut capture).poll_next(&mut context) {
-            Poll::Ready(Some(Ok((7, CaptureEvent::Begin)))) => {}
+            Poll::Ready(Some(Ok((7, CaptureEvent::Begin { .. })))) => {}
             other => panic!("unexpected poll result: {other:?}"),
         }
     }
