@@ -436,6 +436,10 @@ fn get_events(
             })))
         }
         CGEventType::ScrollWheel => {
+            // CGEvent's scroll sign is opposite the wire protocol's (positive = down/right).
+            // Real hardware deltas already reflect this Mac's Natural Scrolling preference,
+            // so unlike the emulation side, just negate - no preference read needed here.
+            // See input-emulation/src/macos.rs.
             if ev.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_IS_CONTINUOUS) != 0 {
                 let v =
                     ev.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1);
@@ -445,14 +449,14 @@ fn get_events(
                     result.push(CaptureEvent::Input(Event::Pointer(PointerEvent::Axis {
                         time: 0,
                         axis: 0, // Vertical
-                        value: v as f64,
+                        value: -v as f64,
                     })));
                 }
                 if h != 0 {
                     result.push(CaptureEvent::Input(Event::Pointer(PointerEvent::Axis {
                         time: 0,
                         axis: 1, // Horizontal
-                        value: h as f64,
+                        value: -h as f64,
                     })));
                 }
             } else {
@@ -465,7 +469,7 @@ fn get_events(
                     result.push(CaptureEvent::Input(Event::Pointer(
                         PointerEvent::AxisDiscrete120 {
                             axis: 0, // Vertical
-                            value: V120_STEPS_PER_LINE * v as i32,
+                            value: -V120_STEPS_PER_LINE * v as i32,
                         },
                     )));
                 }
@@ -473,7 +477,7 @@ fn get_events(
                     result.push(CaptureEvent::Input(Event::Pointer(
                         PointerEvent::AxisDiscrete120 {
                             axis: 1, // Horizontal
-                            value: V120_STEPS_PER_LINE * h as i32,
+                            value: -V120_STEPS_PER_LINE * h as i32,
                         },
                     )));
                 }
