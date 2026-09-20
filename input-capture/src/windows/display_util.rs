@@ -55,17 +55,19 @@ fn moved_across_boundary(
     in_display_region(prev_pos, displays) && !in_bounds(curr_pos, displays, pos)
 }
 
-fn stalled_against_boundary(
+fn reached_outer_boundary(
     prev_pos: (i32, i32),
     curr_pos: (i32, i32),
     displays: &[RECT],
     pos: Position,
 ) -> bool {
-    let stalled_on_axis = match pos {
-        Position::Left | Position::Right => prev_pos.0 == curr_pos.0,
-        Position::Top | Position::Bottom => prev_pos.1 == curr_pos.1,
+    let moving_towards_boundary = match pos {
+        Position::Left => curr_pos.0 <= prev_pos.0,
+        Position::Right => curr_pos.0 >= prev_pos.0,
+        Position::Top => curr_pos.1 <= prev_pos.1,
+        Position::Bottom => curr_pos.1 >= prev_pos.1,
     };
-    if !stalled_on_axis || !in_display_region(curr_pos, displays) {
+    if !moving_towards_boundary || !in_display_region(curr_pos, displays) {
         return false;
     }
 
@@ -80,6 +82,15 @@ fn stalled_against_boundary(
         Position::Bottom => (curr_pos.0, curr_pos.1 + 1),
     };
     !in_display_region(outside, displays)
+        && displays.iter().any(|display| {
+            is_within_dp_region(curr_pos, display)
+                && match pos {
+                    Position::Left => curr_pos.0 == display.left,
+                    Position::Right => curr_pos.0 == display.right - 1,
+                    Position::Top => curr_pos.1 == display.top,
+                    Position::Bottom => curr_pos.1 == display.bottom - 1,
+                }
+        })
 }
 
 pub(crate) fn entered_barrier(
@@ -96,7 +107,7 @@ pub(crate) fn entered_barrier(
     .into_iter()
     .find(|&pos| {
         moved_across_boundary(prev_pos, curr_pos, displays, pos)
-            || stalled_against_boundary(prev_pos, curr_pos, displays, pos)
+            || reached_outer_boundary(prev_pos, curr_pos, displays, pos)
     })
 }
 
@@ -176,7 +187,7 @@ mod tests {
     fn ignores_motion_away_from_an_edge() {
         let displays = [display(0, 0, 100, 80)];
 
-        assert_eq!(entered_barrier((1, 40), (0, 40), &displays), None);
+        assert_eq!(entered_barrier((1, 40), (2, 40), &displays), None);
         assert_eq!(entered_barrier((0, 40), (1, 40), &displays), None);
         assert_eq!(entered_barrier((50, 40), (50, 41), &displays), None);
     }
@@ -185,18 +196,40 @@ mod tests {
     fn ignores_edges_shared_by_adjacent_displays() {
         let displays = [display(0, 0, 100, 80), display(100, 0, 200, 80)];
 
-        assert!(!stalled_against_boundary(
+        assert!(!reached_outer_boundary(
             (99, 40),
             (99, 41),
             &displays,
             Position::Right
         ));
-        assert!(!stalled_against_boundary(
+        assert!(!reached_outer_boundary(
             (100, 40),
             (100, 41),
             &displays,
             Position::Left
         ));
+    }
+
+    #[test]
+    fn detects_motion_reaching_each_outer_edge() {
+        let displays = [display(0, 0, 100, 80)];
+
+        assert_eq!(
+            entered_barrier((1, 40), (0, 40), &displays),
+            Some(Position::Left)
+        );
+        assert_eq!(
+            entered_barrier((98, 40), (99, 40), &displays),
+            Some(Position::Right)
+        );
+        assert_eq!(
+            entered_barrier((40, 1), (40, 0), &displays),
+            Some(Position::Top)
+        );
+        assert_eq!(
+            entered_barrier((40, 78), (40, 79), &displays),
+            Some(Position::Bottom)
+        );
     }
 
     #[test]
