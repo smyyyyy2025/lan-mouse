@@ -7,6 +7,7 @@
 - Maintained branch: `codex/lan-mouse-maintained-main`
 - Long-lived baseline branch: `codex/lan-mouse-v0.11-baseline`
 - The maintained branch is based on upstream `main` at `b81c595`.
+- The default `ssh Windows` route is the router LAN address `192.168.1.195`; explicit fallbacks are `Windows-uu` and `Windows-ts`.
 
 ## Included changes
 
@@ -25,9 +26,23 @@
 - `cargo test -p input-emulation --no-default-features` passed: 5 tests.
 - `cargo test -p input-event` passed: 25 tests.
 - `cargo test -p lan-mouse-proto` passed: 3 tests.
+- Windows `cargo test -p input-capture --no-default-features` passed: 8 tests.
+- Windows `cargo test -p input-emulation --no-default-features` passed: 6 tests.
+- Windows `cargo build --release --no-default-features` passed.
+- macOS `CARGO_NET_OFFLINE=true cargo build --release --no-default-features` passed.
 - Full workspace tests are currently blocked on the Mac host lacking `libadwaita-1` for `libadwaita-sys`.
-- Windows build and deployment are still pending because `ssh Windows` timed out on `100.116.204.102:22` on 2026-09-20.
+
+## Deployment
+
+- Windows installed SHA-256: `20981CA214427FB2E6D0056755F8A5098B73CB6363091B33B143513C49F0C3D9`.
+- Windows backup: `lan-mouse.exe.pre-maintained-20260921-003108`.
+- Windows scheduled task is running and its process owns UDP `0.0.0.0:4242`.
+- macOS installed SHA-256: `57b8d7b9fff05b130548126ade5afcdd84d756d74a826c0561175e8b862cd3ed`.
+- macOS backup: `lan-mouse.pre-maintained-20260921-004327`.
+- The macOS app was re-signed ad hoc and passes `codesign --verify --deep --strict`.
+- Layout is horizontal: Mac right edge targets Windows; Windows left edge targets Mac.
+- Both configured clients are active.
 
 ## Next step
 
-When Windows SSH is reachable, fetch `origin/codex/lan-mouse-maintained-main` in the Windows source checkout, run the Windows release build and focused tests, then deploy only after the service health check passes.
+Perform a physical edge-crossing test in both directions and confirm trackpad/mouse scroll direction. The two local fix commits still need to be pushed to the fork when GitHub connectivity recovers.
