@@ -55,6 +55,33 @@ fn moved_across_boundary(
     in_display_region(prev_pos, displays) && !in_bounds(curr_pos, displays, pos)
 }
 
+fn stalled_against_boundary(
+    prev_pos: (i32, i32),
+    curr_pos: (i32, i32),
+    displays: &[RECT],
+    pos: Position,
+) -> bool {
+    let stalled_on_axis = match pos {
+        Position::Left | Position::Right => prev_pos.0 == curr_pos.0,
+        Position::Top | Position::Bottom => prev_pos.1 == curr_pos.1,
+    };
+    if !stalled_on_axis || !in_display_region(curr_pos, displays) {
+        return false;
+    }
+
+    // Windows clamps the cursor to the virtual desktop, so movement towards an
+    // outer edge can produce repeated coordinates instead of an out-of-bounds
+    // point. Check that the next pixel in that direction is outside every
+    // display; this excludes edges shared by adjacent displays.
+    let outside = match pos {
+        Position::Left => (curr_pos.0 - 1, curr_pos.1),
+        Position::Right => (curr_pos.0 + 1, curr_pos.1),
+        Position::Top => (curr_pos.0, curr_pos.1 - 1),
+        Position::Bottom => (curr_pos.0, curr_pos.1 + 1),
+    };
+    !in_display_region(outside, displays)
+}
+
 pub(crate) fn entered_barrier(
     prev_pos: (i32, i32),
     curr_pos: (i32, i32),
@@ -67,7 +94,10 @@ pub(crate) fn entered_barrier(
         Position::Bottom,
     ]
     .into_iter()
-    .find(|&pos| moved_across_boundary(prev_pos, curr_pos, displays, pos))
+    .find(|&pos| {
+        moved_across_boundary(prev_pos, curr_pos, displays, pos)
+            || stalled_against_boundary(prev_pos, curr_pos, displays, pos)
+    })
 }
 
 ///
@@ -96,4 +126,67 @@ pub(crate) fn clamp_to_display_bounds(
     let (min_x, max_x) = (display.left, display.right - 1);
     let (min_y, max_y) = (display.top, display.bottom - 1);
     (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn display(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    #[test]
+    fn detects_stalled_motion_at_each_outer_edge() {
+        let displays = [display(0, 0, 100, 80)];
+
+        assert_eq!(
+            entered_barrier((0, 40), (0, 41), &displays),
+            Some(Position::Left)
+        );
+        assert_eq!(
+            entered_barrier((99, 40), (99, 41), &displays),
+            Some(Position::Right)
+        );
+        assert_eq!(
+            entered_barrier((40, 0), (41, 0), &displays),
+            Some(Position::Top)
+        );
+        assert_eq!(
+            entered_barrier((40, 79), (41, 79), &displays),
+            Some(Position::Bottom)
+        );
+    }
+
+    #[test]
+    fn ignores_motion_away_from_an_edge() {
+        let displays = [display(0, 0, 100, 80)];
+
+        assert_eq!(entered_barrier((1, 40), (0, 40), &displays), None);
+        assert_eq!(entered_barrier((0, 40), (1, 40), &displays), None);
+        assert_eq!(entered_barrier((50, 40), (50, 41), &displays), None);
+    }
+
+    #[test]
+    fn ignores_edges_shared_by_adjacent_displays() {
+        let displays = [display(0, 0, 100, 80), display(100, 0, 200, 80)];
+
+        assert!(!stalled_against_boundary(
+            (99, 40),
+            (99, 41),
+            &displays,
+            Position::Right
+        ));
+        assert!(!stalled_against_boundary(
+            (100, 40),
+            (100, 41),
+            &displays,
+            Position::Left
+        ));
+    }
 }
