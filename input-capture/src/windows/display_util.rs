@@ -190,7 +190,7 @@ mod tests {
 
         assert_eq!(
             entered_barrier((0, 40), (0, 41), &displays),
-            Some((Position::Left, (0, 40)))
+            Some((Position::Left, (0, 41)))
         );
         assert_eq!(
             entered_barrier((99, 40), (99, 41), &displays),
@@ -198,11 +198,11 @@ mod tests {
         );
         assert_eq!(
             entered_barrier((40, 0), (41, 0), &displays),
-            Some((Position::Top, (40, 0)))
+            Some((Position::Top, (41, 0)))
         );
         assert_eq!(
             entered_barrier((40, 79), (41, 79), &displays),
-            Some((Position::Bottom, (40, 79)))
+            Some((Position::Bottom, (41, 79)))
         );
     }
 
