@@ -181,15 +181,40 @@ fn scroll(axis: u8, value: i32) {
         1 => MOUSEEVENTF_HWHEEL,
         _ => return,
     };
+    let Some(value) = windows_scroll_delta(axis, value) else {
+        return;
+    };
     let mi = MOUSEINPUT {
         dx: 0,
         dy: 0,
-        mouseData: -value as u32,
+        mouseData: value as u32,
         dwFlags: event_type,
         time: 0,
         dwExtraInfo: 0,
     };
     send_mouse_input(mi);
+}
+
+fn windows_scroll_delta(axis: u8, value: i32) -> Option<i32> {
+    match axis {
+        // macOS already reports vertical deltas with the sign expected by
+        // Windows' WHEEL input. Negating it reverses trackpad and wheel scroll.
+        0 => Some(value),
+        // Preserve the existing horizontal convention.
+        1 => Some(-value),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn windows_scroll_signs_match_platform_conventions() {
+        assert_eq!(super::windows_scroll_delta(0, 120), Some(120));
+        assert_eq!(super::windows_scroll_delta(0, -120), Some(-120));
+        assert_eq!(super::windows_scroll_delta(1, 120), Some(-120));
+        assert_eq!(super::windows_scroll_delta(2, 120), None);
+    }
 }
 
 fn key_event(key: u32, state: u8) {
