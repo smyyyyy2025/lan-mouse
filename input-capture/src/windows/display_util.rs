@@ -4,6 +4,27 @@ use input_event::screen::{CrossedEdge, Rect, crossed_exposed_edge};
 
 use crate::Position;
 
+fn is_within_dp_region(point: (i32, i32), display: &RECT) -> bool {
+    [
+        Position::Left,
+        Position::Right,
+        Position::Top,
+        Position::Bottom,
+    ]
+    .iter()
+    .all(|&pos| is_within_dp_boundary(point, display, pos))
+}
+
+fn is_within_dp_boundary(point: (i32, i32), display: &RECT, pos: Position) -> bool {
+    let (x, y) = point;
+    match pos {
+        Position::Left => display.left <= x,
+        Position::Right => display.right > x,
+        Position::Top => display.top <= y,
+        Position::Bottom => display.bottom > y,
+    }
+}
+
 /// returns whether the given position is within the display bounds with respect to the given
 /// barrier position
 ///
