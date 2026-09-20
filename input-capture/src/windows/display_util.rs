@@ -105,7 +105,7 @@ pub(crate) fn entered_barrier(
 ///
 /// # Arguments
 ///
-/// * `prev_point`: coordinates, the cursor was before entering, within bounds of a display
+/// * `prev_point`: coordinates the cursor had before entering
 /// * `entry_point`: point to clamp
 ///
 /// returns: (i32, i32), the corrected entry point
@@ -115,10 +115,19 @@ pub(crate) fn clamp_to_display_bounds(
     prev_point: (i32, i32),
     point: (i32, i32),
 ) -> (i32, i32) {
-    /* find display where movement came from */
+    /*
+     * Prefer the display where movement came from. Windows may report the
+     * previous point just outside the desktop when an injected cursor first
+     * reaches an edge, so fall back to the current (known-valid) point.
+     */
     let display = display_regions
         .iter()
         .find(|&d| is_within_dp_region(prev_point, d))
+        .or_else(|| {
+            display_regions
+                .iter()
+                .find(|&d| is_within_dp_region(point, d))
+        })
         .unwrap();
 
     /* clamp to bounds (inclusive) */
@@ -188,5 +197,19 @@ mod tests {
             &displays,
             Position::Left
         ));
+    }
+
+    #[test]
+    fn clamps_using_current_display_when_previous_point_is_outside() {
+        let displays = [display(0, 0, 100, 80)];
+
+        assert_eq!(
+            clamp_to_display_bounds(&displays, (-1, 40), (0, 41)),
+            (0, 41)
+        );
+        assert_eq!(
+            clamp_to_display_bounds(&displays, (40, -1), (41, 0)),
+            (41, 0)
+        );
     }
 }
